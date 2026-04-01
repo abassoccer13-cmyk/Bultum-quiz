@@ -6,118 +6,136 @@
 <title>MN Standards Quiz</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Fredoka+One&display=swap">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);font-family:'Nunito',sans-serif}
-body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:16px;min-height:100vh}
+html,body{height:100%;font-family:'Nunito',sans-serif}
+body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:16px;min-height:100vh}
 @keyframes pop{0%{transform:scale(.85);opacity:0}80%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 @keyframes fadeup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .pop{animation:pop .35s cubic-bezier(.34,1.56,.64,1) both}
 .shake{animation:shake .4s ease}
 .bounce{animation:bounce .7s ease infinite}
 .fadeup{animation:fadeup .4s ease both}
-.spin{animation:spin 1.5s linear infinite;display:inline-block}
-input,button,select,textarea{font-family:'Nunito',sans-serif}
+input,button,select{font-family:'Nunito',sans-serif}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-const {useState,useEffect,useCallback,createElement:h}=React;
+var h=React.createElement;
+var useState=React.useState;
+var useEffect=React.useEffect;
+var LABELS=['A','B','C','D'];
 
-/* ─── Parse quiz config from URL hash or query param ─── */
 function parseConfig(){
   try{
-    var hash=window.location.hash.replace('#','');
     var search=window.location.search;
-    var q=null;
-    if(hash) q=hash;
+    var hash=window.location.hash.replace('#','');
+    var raw=null;
+    if(hash&&hash.length>10) raw=hash;
     else{
       var m=search.match(/[?&]q=([^&]+)/);
-      if(m) q=decodeURIComponent(m[1]);
+      if(m) raw=decodeURIComponent(m[1]);
     }
-    if(!q) return null;
-    /* Decode URL-safe base64 (- → + , _ → /) and add padding */
-    var b64=q.replace(/-/g,'+').replace(/_/g,'/');
+    if(!raw) return null;
+    var b64=raw.replace(/-/g,'+').replace(/_/g,'/');
     while(b64.length%4) b64+='=';
     var json=decodeURIComponent(escape(atob(b64)));
     return JSON.parse(json);
-  } catch(e){ return null; }
+  }catch(e){return null;}
 }
 
-/* ─── Completion code encoder ─── */
-function makeCode(studentName, standardCode, pct){
-  var raw=studentName+'|'+standardCode+'|'+pct+'|'+Date.now();
-  return btoa(unescape(encodeURIComponent(raw))).replace(/=/g,'').slice(0,20).toUpperCase();
+function getClaimed(){try{return JSON.parse(localStorage.getItem('mn_claimed')||'{}');}catch(e){return {};}}
+function claimName(n){try{var c=getClaimed();c[n]=Date.now();localStorage.setItem('mn_claimed',JSON.stringify(c));}catch(e){}}
+function unclaimName(n){try{var c=getClaimed();delete c[n];localStorage.setItem('mn_claimed',JSON.stringify(c));}catch(e){}}
+
+function makeCode(name,stdCode,pct){
+  var raw=name+'|'+stdCode+'|'+pct+'|'+Date.now();
+  return btoa(unescape(encodeURIComponent(raw))).replace(/[^A-Z0-9]/gi,'').slice(0,16).toUpperCase();
 }
 
-/* ─── Main App ─── */
 function App(){
   var cfg=parseConfig();
+  var isClass=cfg&&Array.isArray(cfg.students)&&cfg.students.length>0;
+  var isSingle=cfg&&cfg.n&&Array.isArray(cfg.qs)&&cfg.qs.length>0;
 
-  var [screen,setScreen]=useState(cfg?'loading':'noconfig');
-  var [name,setName]=useState(cfg?cfg.n||'':'');
-  var [questions,setQuestions]=useState([]);
-  var [cur,setCur]=useState(0);
-  var [selected,setSelected]=useState(null);
-  var [answered,setAnswered]=useState(false);
-  var [correct,setCorrect]=useState(false);
-  var [results,setResults]=useState([]);
-  var [shake,setShake]=useState(false);
-  var [err,setErr]=useState('');
-  var [code,setCode]=useState('');
+  var scr=useState(function(){
+    if(!cfg) return 'noconfig';
+    if(isSingle) return 'single_ready';
+    if(isClass) return 'pick_name';
+    return 'noconfig';
+  });
+  var screen=scr[0]; var setScreen=scr[1];
+
+  var nm=useState(isSingle?cfg.n:''); var name=nm[0]; var setName=nm[1];
+  var qs=useState(isSingle&&cfg.qs?cfg.qs:[]); var questions=qs[0]; var setQuestions=qs[1];
+  var cl=useState(getClaimed()); var claimed=cl[0]; var setClaimed=cl[1];
+  var cu=useState(0); var cur=cu[0]; var setCur=cu[1];
+  var sel=useState(null); var selected=sel[0]; var setSelected=sel[1];
+  var ans=useState(false); var answered=ans[0]; var setAnswered=ans[1];
+  var cor=useState(false); var correct=cor[0]; var setCorrect=cor[1];
+  var res=useState([]); var results=res[0]; var setResults=res[1];
+  var shk=useState(false); var shake=shk[0]; var setShake=shk[1];
+  var cod=useState(''); var code=cod[0]; var setCode=cod[1];
 
   var std=cfg||{};
   var gradeLabel=std.g==='K'?'Kindergarten':(std.g||'4')+'th';
 
-  /* Auto-start if config present */
+  /* Refresh claimed names every 2s */
   useEffect(function(){
-    if(cfg){
-      /* Check if questions are pre-embedded in the URL payload */
-      if(cfg.qs&&Array.isArray(cfg.qs)&&cfg.qs.length>=3){
-        /* Questions pre-generated by teacher hub — no API call needed */
-        setQuestions(cfg.qs);
-        setCur(0);setSelected(null);setAnswered(false);setResults([]);
-        if(cfg.n){
-          setName(cfg.n);
-          setScreen('quiz');
-        } else {
-          setScreen('enterName');
-        }
-      } else if(cfg.c&&cfg.n){
-        /* Old format without pre-generated questions — show error */
-        setErr('This link was generated with an older version of the hub. Please ask your teacher to generate a new quiz link.');
-        setScreen('err');
-      } else if(cfg){
-        setScreen('enterName');
-      }
-    }
+    var t=setInterval(function(){setClaimed(getClaimed());},2000);
+    return function(){clearInterval(t);};
   },[]);
 
-  function startQuiz(){
-    /* Questions come from URL — just start */
-    if(cfg&&cfg.qs){
-      setScreen('quiz');
+  /* Auto-start quiz for single student */
+  useEffect(function(){
+    if(screen==='single_ready'&&isSingle){
+      var t=setTimeout(function(){setScreen('quiz');},2000);
+      return function(){clearTimeout(t);};
     }
+  },[screen]);
+
+  /* Auto-start after class name confirm */
+  useEffect(function(){
+    if(screen==='class_confirm'){
+      var t=setTimeout(function(){setScreen('quiz');},2500);
+      return function(){clearTimeout(t);};
+    }
+  },[screen]);
+
+  function pickClassStudent(stu){
+    if(claimed[stu]) return;
+    var qs2=cfg.qs;
+    if(!qs2||!qs2.length) return;
+    setName(stu);
+    setQuestions(qs2);
+    claimName(stu);
+    setClaimed(getClaimed());
+    setCur(0);setSelected(null);setAnswered(false);setResults([]);
+    setScreen('class_confirm');
+  }
+
+  function unclaimSelf(){
+    unclaimName(name);
+    setClaimed(getClaimed());
+    setName('');
+    setScreen('pick_name');
   }
 
   function pickAnswer(idx){
-    if(answered) return;
+    if(answered||!questions[cur]) return;
     setSelected(idx);setAnswered(true);
-    var isCorrect=idx===questions[cur].correct;
-    setCorrect(isCorrect);
-    if(!isCorrect){setShake(true);setTimeout(function(){setShake(false);},500);}
-    var newR=results.concat([{q:questions[cur].question,sel:idx,correct:questions[cur].correct,ok:isCorrect}]);
-    setResults(newR);
+    var isOk=idx===questions[cur].correct;
+    setCorrect(isOk);
+    if(!isOk){setShake(true);setTimeout(function(){setShake(false);},500);}
+    var nr=results.concat([{q:questions[cur].question,sel:idx,correct:questions[cur].correct,ok:isOk}]);
+    setResults(nr);
     if(cur+1>=questions.length){
-      /* Build completion code */
-      var sc=Math.round(100*newR.filter(function(r){return r.ok;}).length/newR.length);
-      setCode(makeCode(name.trim()||cfg.n||'Student',std.c,sc));
+      var sc=Math.round(100*nr.filter(function(r){return r.ok;}).length/nr.length);
+      setCode(makeCode(name,std.c||'',sc));
     }
   }
 
@@ -130,80 +148,94 @@ function App(){
   var pct=questions.length?Math.round(100*score/questions.length):0;
   var gColor=pct>=90?'#059669':pct>=75?'#2563eb':pct>=60?'#d97706':'#dc2626';
   var gLabel=pct>=90?'Advanced ⭐':pct>=75?'Proficient 💪':pct>=60?'Developing 📈':'Keep Practicing 🌱';
-  var nm=name.trim()||cfg&&cfg.n||'Student';
-  var LABELS=['A','B','C','D'];
 
-  var CARD={background:'white',borderRadius:20,padding:24,boxShadow:'0 8px 32px rgba(0,0,0,.2)',
-            width:'100%',maxWidth:620,marginTop:12};
+  var CARD={background:'white',borderRadius:20,padding:24,boxShadow:'0 8px 32px rgba(0,0,0,.2)',width:'100%',maxWidth:640,marginTop:12};
 
-  /* ── NO CONFIG ── */
-  if(screen==='noconfig') return h('div',{style:{...CARD,textAlign:'center',padding:40}},
+  /* NO CONFIG */
+  if(screen==='noconfig') return h('div',{style:Object.assign({},CARD,{textAlign:'center',padding:40})},
     h('div',{style:{fontSize:56,marginBottom:12}},'🎓'),
-    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:22,color:'#4f46e5',marginBottom:8}},'MN Standards Quiz'),
-    h('div',{style:{fontSize:14,color:'#6b7280',lineHeight:1.7}},
-      'This quiz is opened via a link from your teacher.',h('br',null),
-      'Ask your teacher to share the quiz link with you.')
+    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:22,color:'#4f46e5',marginBottom:12}},'MN Standards Quiz'),
+    h('div',{style:{fontSize:14,color:'#6b7280',lineHeight:1.9}},
+      'This page opens via a special link from your teacher.',h('br',null),
+      h('strong',null,'Do not open this page directly.'),h('br',null),
+      'Ask your teacher to share the quiz link with you.',h('br',null),h('br',null),
+      h('span',{style:{fontSize:12,color:'#94a3b8'}},'(Teachers: use the Student Quiz tab in the hub to generate a link.)'))
   );
 
-  /* ── ENTER NAME (if config has no name) ── */
-  if(screen==='enterName') return h('div',{style:{...CARD,textAlign:'center'}},
-    h('div',{className:'bounce',style:{fontSize:56,marginBottom:8}},'🎓'),
-    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:26,color:'#4f46e5',marginBottom:6}},gradeLabel+' Grade Quiz!'),
-    h('div',{style:{fontSize:13,color:'#6b7280',marginBottom:20,lineHeight:1.6}},
-      'Quiz: ',h('b',null,std.t)),
-    h('input',{value:name,onChange:function(e){setName(e.target.value);},
-      onKeyDown:function(e){if(e.key==='Enter'&&name.trim())startQuiz();},
-      placeholder:"What's your name?",autoFocus:true,
-      style:{width:'100%',border:'3px solid #e0e7ff',borderRadius:14,padding:'13px 16px',
-             fontSize:17,fontWeight:700,textAlign:'center',outline:'none',marginBottom:14,color:'#312e81'}}),
-    h('button',{onClick:function(){if(name.trim())startQuiz();},disabled:!name.trim(),
-      style:{width:'100%',background:name.trim()?'linear-gradient(135deg,#6366f1,#8b5cf6)':'#e5e7eb',
-             color:name.trim()?'white':'#9ca3af',border:'none',borderRadius:14,padding:'14px',
-             fontSize:17,fontWeight:900,cursor:name.trim()?'pointer':'not-allowed'}},"Let's Go! 🚀")
+  /* SINGLE STUDENT READY */
+  if(screen==='single_ready') return h('div',{style:Object.assign({},CARD,{textAlign:'center'})},
+    h('div',{className:'bounce',style:{fontSize:64,lineHeight:1.2}},'🎓'),
+    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:26,color:'#4f46e5',marginTop:8,marginBottom:6}},'Hi, '+name+'!'),
+    h('div',{style:{fontSize:14,color:'#6b7280',marginBottom:16,lineHeight:1.7}},
+      'Get ready for your quiz on:',h('br',null),
+      h('strong',{style:{color:'#312e81'}},std.t||'your standard')),
+    h('div',{style:{background:'#eef2ff',borderRadius:10,padding:'12px 20px',fontSize:13,color:'#4f46e5',fontWeight:700}},
+      '✨ Starting in a moment...')
   );
 
-  /* ── LOADING ── */
-  if(screen==='loading') return h('div',{style:{...CARD,textAlign:'center',padding:48}},
-    h('div',{className:'spin',style:{fontSize:52,display:'block',marginBottom:16}},'🎲'),
-    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:22,color:'#4f46e5',marginBottom:6}},'Building Your Quiz…'),
-    h('div',{style:{fontSize:13,color:'#6b7280',marginBottom:4}},'Questions for: ',h('b',null,std.t)),
-    h('div',{style:{fontSize:12,color:'#9ca3af'}},'This takes about 10-20 seconds ✨')
+  /* CLASS NAME PICKER */
+  if(screen==='pick_name'){
+    var students=cfg.students||[];
+    return h('div',{style:CARD},
+      h('div',{style:{textAlign:'center',marginBottom:20}},
+        h('div',{className:'bounce',style:{fontSize:52}},'🎯'),
+        h('div',{style:{fontFamily:"'Fredoka One'",fontSize:24,color:'#4f46e5',marginTop:6,marginBottom:4}},gradeLabel+' Grade Quiz!'),
+        h('div',{style:{fontWeight:800,fontSize:15,color:'#374151',marginBottom:4}},std.t||''),
+        h('div',{style:{fontSize:12,color:'#6b7280'}},'Tap your name to begin. Names disappear once claimed.')
+      ),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+        students.map(function(stu){
+          var taken=!!claimed[stu];
+          return h('button',{
+            key:stu,
+            onClick:function(){if(!taken) pickClassStudent(stu);},
+            disabled:taken,
+            style:{
+              position:'relative',padding:'16px 12px',borderRadius:14,
+              border:'2px solid '+(taken?'#e2e8f0':'#6366f1'),
+              background:taken?'#f1f5f9':'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              color:taken?'#94a3b8':'white',fontWeight:800,fontSize:15,
+              cursor:taken?'not-allowed':'pointer',fontFamily:'inherit',
+              opacity:taken?0.55:1,transition:'all .25s',
+              boxShadow:taken?'none':'0 4px 14px rgba(99,102,241,.4)',
+              textDecoration:taken?'line-through':'none'
+            }
+          },taken?('✓ '+stu):stu);
+        })
+      )
+    );
+  }
+
+  /* CLASS CONFIRM */
+  if(screen==='class_confirm') return h('div',{style:Object.assign({},CARD,{textAlign:'center'})},
+    h('div',{style:{fontSize:64,marginBottom:8}},'👋'),
+    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:24,color:'#4f46e5',marginBottom:6}},'Hi, '+name+'!'),
+    h('div',{style:{fontSize:13,color:'#6b7280',marginBottom:20,lineHeight:1.7}},
+      'Quiz: ',h('strong',null,std.t||''),h('br',null),'Starting your quiz in a moment...'),
+    h('button',{
+      onClick:unclaimSelf,
+      style:{background:'#fef2f2',color:'#dc2626',border:'2px solid #fca5a5',borderRadius:12,
+             padding:'10px 22px',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:'inherit'}},
+      '✕ That\'s not me — pick again')
   );
 
-  /* ── ERROR ── */
-  if(screen==='err') return h('div',{style:{...CARD,textAlign:'center',padding:40}},
-    h('div',{style:{fontSize:52,marginBottom:12}},'😕'),
-    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:20,color:'#dc2626',marginBottom:8}},'Oops!'),
-    h('div',{style:{fontSize:14,color:'#6b7280',marginBottom:20,lineHeight:1.6}},err),
-    h('button',{onClick:startQuiz,
-      style:{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'white',border:'none',
-             borderRadius:14,padding:'12px 28px',fontSize:15,fontWeight:900,cursor:'pointer'}},
-      'Try Again 🔄')
-  );
-
-  /* ── QUIZ ── */
+  /* QUIZ */
   if(screen==='quiz'&&questions.length){
     var q=questions[cur];
     var prog=((cur+1)/questions.length)*100;
     return h('div',{style:CARD},
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
         h('div',{style:{fontSize:12,fontWeight:700,color:'#6b7280'}},'Question '+(cur+1)+' of '+questions.length),
-        h('div',{style:{fontSize:12,fontWeight:700,color:'#6b7280'}},
-          h('span',{style:{color:'#059669',fontWeight:800}},results.filter(function(r){return r.ok;}).length),
-          ' correct')
+        h('div',{style:{fontSize:12,fontWeight:800,color:'#059669'}},results.filter(function(r){return r.ok;}).length+' correct')
       ),
-      h('div',{style:{background:'#e0e7ff',borderRadius:99,height:9,marginBottom:18,overflow:'hidden'}},
-        h('div',{style:{background:'linear-gradient(90deg,#6366f1,#8b5cf6)',height:'100%',
-                        borderRadius:99,width:prog+'%',transition:'width .4s ease'}})
+      h('div',{style:{background:'#e0e7ff',borderRadius:99,height:9,marginBottom:16,overflow:'hidden'}},
+        h('div',{style:{background:'linear-gradient(90deg,#6366f1,#8b5cf6)',height:'100%',borderRadius:99,width:prog+'%',transition:'width .4s'}})
       ),
       h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:14}},
-        h('span',{style:{background:'#eef2ff',color:'#4f46e5',fontSize:10,fontWeight:800,
-                         padding:'2px 8px',borderRadius:99}},std.c),
-        h('span',{style:{fontSize:11,color:'#9ca3af',fontWeight:600}},std.t)
+        std.c&&h('span',{style:{background:'#eef2ff',color:'#4f46e5',fontSize:10,fontWeight:800,padding:'2px 9px',borderRadius:99}},std.c),
+        h('span',{style:{fontSize:11,color:'#9ca3af',fontWeight:600}},std.t||'')
       ),
-      h('div',{className:shake?'shake':'',
-               style:{background:'linear-gradient(135deg,#eef2ff,#faf5ff)',borderRadius:13,
-                      padding:'18px 20px',marginBottom:18,border:'2px solid #e0e7ff'}},
+      h('div',{className:shake?'shake':'',style:{background:'linear-gradient(135deg,#eef2ff,#faf5ff)',borderRadius:13,padding:'18px 20px',marginBottom:18,border:'2px solid #e0e7ff'}},
         h('div',{style:{fontWeight:800,fontSize:17,color:'#1e1b4b',lineHeight:1.55}},q.question)
       ),
       h('div',{style:{display:'flex',flexDirection:'column',gap:9,marginBottom:18}},
@@ -214,81 +246,49 @@ function App(){
             else if(i===selected&&!correct){bg='#fef2f2';border='2px solid #fca5a5';col='#dc2626';}
           }
           return h('button',{key:i,onClick:function(){pickAnswer(i);},disabled:answered,
-            style:{display:'flex',alignItems:'center',gap:12,textAlign:'left',background:bg,
-                   border:border,borderRadius:11,padding:'13px 15px',cursor:answered?'default':'pointer',
-                   color:col,fontWeight:700,fontSize:14,transition:'all .2s',fontFamily:'inherit'}},
-            h('div',{style:{width:30,height:30,borderRadius:'50%',flexShrink:0,
-                            display:'flex',alignItems:'center',justifyContent:'center',
-                            fontWeight:900,fontSize:13,color:'white',
-                            background:answered&&i===q.correct?'#059669':
-                                       answered&&i===selected&&!correct?'#dc2626':
-                                       'linear-gradient(135deg,#6366f1,#8b5cf6)'}},
-              answered&&i===q.correct?'✓':answered&&i===selected&&!correct?'✗':LABELS[i]
-            ),
+            style:{display:'flex',alignItems:'center',gap:12,textAlign:'left',background:bg,border:border,
+                   borderRadius:11,padding:'13px 15px',cursor:answered?'default':'pointer',
+                   fontFamily:'inherit',color:col,fontWeight:700,fontSize:14,transition:'all .2s'}},
+            h('div',{style:{width:30,height:30,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:13,color:'white',
+                            background:answered&&i===q.correct?'#059669':answered&&i===selected&&!correct?'#dc2626':'linear-gradient(135deg,#6366f1,#8b5cf6)'}},
+              answered&&i===q.correct?'✓':answered&&i===selected&&!correct?'✗':LABELS[i]),
             choice
           );
         })
       ),
-      answered&&h('div',{className:'fadeup',
-                         style:{background:correct?'#f0fdf4':'#fef2f2',
-                                border:'2px solid '+(correct?'#6ee7b7':'#fca5a5'),
-                                borderRadius:11,padding:'13px 15px',marginBottom:14}},
-        h('div',{style:{fontWeight:800,fontSize:15,color:correct?'#059669':'#dc2626',marginBottom:3}},
-          correct?'🎉 Correct! Great job, '+nm+'!':'😊 Not quite — here\'s the answer:'),
+      answered&&h('div',{className:'fadeup',style:{background:correct?'#f0fdf4':'#fef2f2',border:'2px solid '+(correct?'#6ee7b7':'#fca5a5'),borderRadius:11,padding:'13px 15px',marginBottom:14}},
+        h('div',{style:{fontWeight:800,fontSize:15,color:correct?'#059669':'#dc2626',marginBottom:3}},correct?'🎉 Correct! Great job, '+name+'!':'😊 Not quite — here\'s the answer:'),
         h('div',{style:{fontSize:12,color:'#374151',lineHeight:1.6}},q.explanation)
       ),
-      answered&&h('button',{className:'pop',onClick:next,
-        style:{width:'100%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'white',
-               border:'none',borderRadius:13,padding:'14px',fontSize:16,fontWeight:900,
-               cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 14px rgba(99,102,241,.45)'}},
+      answered&&h('button',{className:'pop',onClick:next,style:{width:'100%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'white',border:'none',borderRadius:13,padding:'14px',fontSize:16,fontWeight:900,cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 14px rgba(99,102,241,.45)'}},
         cur+1>=questions.length?'See My Results! 🏆':'Next Question →')
     );
   }
 
-  /* ── RESULTS ── */
-  if(screen==='results') return h('div',{style:{...CARD,textAlign:'center'}},
+  /* RESULTS */
+  if(screen==='results') return h('div',{style:Object.assign({},CARD,{textAlign:'center'})},
     h('div',{style:{fontSize:72,marginBottom:8}},pct>=90?'🏆':pct>=75?'⭐':'💪'),
-    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:26,color:'#312e81',marginBottom:8}},
-      nm+"'s Results!"),
-    /* Big score bubble */
-    h('div',{style:{background:gColor,borderRadius:24,padding:'24px 40px',display:'inline-block',
-                    marginBottom:16,boxShadow:'0 8px 24px rgba(0,0,0,.18)'}},
-      h('div',{style:{fontSize:72,fontWeight:900,color:'white',lineHeight:1}},pct+'%'),
-      h('div',{style:{fontSize:18,fontWeight:800,color:'rgba(255,255,255,.9)',marginTop:4}},gLabel)
+    h('div',{style:{fontFamily:"'Fredoka One'",fontSize:26,color:'#312e81',marginBottom:8}},name+"'s Results!"),
+    h('div',{style:{background:gColor,borderRadius:20,padding:'20px 40px',display:'inline-block',marginBottom:16,boxShadow:'0 8px 24px rgba(0,0,0,.18)'}},
+      h('div',{style:{fontSize:68,fontWeight:900,color:'white',lineHeight:1}},pct+'%'),
+      h('div',{style:{fontSize:17,fontWeight:800,color:'rgba(255,255,255,.9)',marginTop:4}},gLabel)
     ),
-    h('div',{style:{fontSize:14,fontWeight:700,color:'#6b7280',marginBottom:20}},
-      score+' out of '+questions.length+' correct · '+std.c),
-
-    /* Completion code for teacher */
-    h('div',{style:{background:'#fefce8',border:'3px solid #fde047',borderRadius:16,
-                    padding:'20px',marginBottom:20}},
-      h('div',{style:{fontWeight:900,fontSize:14,color:'#713f12',marginBottom:8}},
-        '📋 Show this to your teacher!'),
-      h('div',{style:{fontFamily:'monospace',fontSize:18,fontWeight:900,
-                      background:'white',border:'2px solid #fde047',borderRadius:8,
-                      padding:'10px 16px',color:'#1a1a2e',letterSpacing:'2px',marginBottom:8}},
-        code),
-      h('div',{style:{fontSize:11,color:'#92400e'}},
-        'Your teacher will enter this code to save your score.')
+    h('div',{style:{fontSize:14,fontWeight:700,color:'#6b7280',marginBottom:20}},score+' out of '+questions.length+' correct'+(std.c?' · '+std.c:'')),
+    h('div',{style:{background:'#fefce8',border:'3px solid #fde047',borderRadius:16,padding:'20px',marginBottom:20}},
+      h('div',{style:{fontWeight:900,fontSize:14,color:'#713f12',marginBottom:10}},'📋 Show this code to your teacher!'),
+      h('div',{style:{fontFamily:'monospace',fontSize:22,fontWeight:900,letterSpacing:'3px',background:'white',border:'2px solid #fde047',borderRadius:10,padding:'12px 20px',color:'#1a1a2e',marginBottom:8}},code),
+      h('div',{style:{fontSize:11,color:'#92400e',lineHeight:1.5}},'Your teacher enters this code to save your score to the Mastery Tracker.')
     ),
-
-    /* Review */
     h('div',{style:{textAlign:'left',marginBottom:20}},
       h('div',{style:{fontWeight:800,fontSize:13,color:'#374151',marginBottom:8}},'📋 Review'),
       results.map(function(r,i){
-        return h('div',{key:i,style:{display:'flex',alignItems:'flex-start',gap:10,
-                                     padding:'10px 12px',borderRadius:10,marginBottom:7,
-                                     background:r.ok?'#f0fdf4':'#fef2f2',
-                                     border:'1.5px solid '+(r.ok?'#a7f3d0':'#fca5a5')}},
+        return h('div',{key:i,style:{display:'flex',alignItems:'flex-start',gap:10,padding:'10px 12px',borderRadius:10,marginBottom:7,background:r.ok?'#f0fdf4':'#fef2f2',border:'1.5px solid '+(r.ok?'#a7f3d0':'#fca5a5')}},
           h('span',{style:{fontSize:16,flexShrink:0}},r.ok?'✅':'❌'),
-          h('div',{style:{fontSize:12,color:'#374151',lineHeight:1.4}},
-            r.q.length>70?r.q.slice(0,70)+'…':r.q)
+          h('div',{style:{fontSize:12,color:'#374151',lineHeight:1.4}},r.q.length>70?r.q.slice(0,70)+'…':r.q)
         );
       })
     ),
-    h('div',{style:{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',borderRadius:14,
-                    padding:'16px',color:'white',fontWeight:900,fontSize:18}},
-      '🎓 Quiz Complete! Amazing work, '+nm+'! 🎉')
+    h('div',{style:{background:'linear-gradient(135deg,#6366f1,#8b5cf6)',borderRadius:14,padding:'16px',color:'white',fontWeight:900,fontSize:18}},'🎓 Quiz Complete! Amazing work, '+name+'! 🎉')
   );
 
   return null;
