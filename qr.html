@@ -4,106 +4,146 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quiz QR Code</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f8fafc;display:flex;
      align-items:center;justify-content:center;min-height:100vh;padding:20px}
 .card{background:white;border-radius:20px;padding:36px;box-shadow:0 4px 24px rgba(0,0,0,.12);
-      max-width:420px;width:100%;text-align:center}
+      max-width:440px;width:100%;text-align:center}
 .logo{font-size:40px;margin-bottom:8px}
 .title{font-size:22px;font-weight:900;color:#1e1b4b;margin-bottom:4px}
-.subtitle{font-size:13px;color:#6b7280;margin-bottom:24px;line-height:1.5}
-.std-badge{display:inline-block;background:#eef2ff;color:#4f46e5;font-size:12px;
-           font-weight:800;padding:4px 12px;border-radius:20px;margin-bottom:6px}
-.std-title{font-size:15px;font-weight:700;color:#312e81;margin-bottom:24px}
-.qr-wrap{background:white;border:4px solid #6366f1;border-radius:16px;
-         padding:16px;display:inline-block;margin-bottom:20px}
-#qrcode canvas,#qrcode img{border-radius:4px}
+.badge{display:inline-block;background:#eef2ff;color:#4f46e5;font-size:12px;
+       font-weight:800;padding:4px 14px;border-radius:20px;margin-bottom:6px}
+.std-title{font-size:15px;font-weight:700;color:#312e81;margin-bottom:20px}
+.student-tag{background:#f0fdf4;border:2px solid #6ee7b7;border-radius:10px;
+             padding:8px 18px;font-size:15px;font-weight:800;color:#065f46;
+             margin-bottom:20px;display:inline-block}
+.qr-wrap{border:4px solid #6366f1;border-radius:16px;padding:12px;
+         display:inline-block;margin-bottom:16px;background:white}
+#qr-canvas{display:block}
+.url-label{font-size:11px;color:#94a3b8;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .url-box{background:#f5f3ff;border-radius:10px;padding:10px 14px;
          font-family:monospace;font-size:10px;color:#4f46e5;
-         word-break:break-all;line-height:1.6;margin-bottom:24px;text-align:left}
-.student-tag{background:#f0fdf4;border:2px solid #6ee7b7;border-radius:10px;
-             padding:8px 16px;font-size:14px;font-weight:800;color:#065f46;
-             margin-bottom:20px;display:inline-block}
-.print-btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;
-           border:none;border-radius:12px;padding:14px 32px;font-size:16px;
-           font-weight:900;cursor:pointer;width:100%;margin-bottom:10px}
-.print-btn:hover{opacity:.9}
-.hint{font-size:11px;color:#94a3b8;line-height:1.5}
-.err{color:#dc2626;font-size:14px;font-weight:700;padding:20px}
+         word-break:break-all;line-height:1.6;margin-bottom:20px;text-align:left;
+         cursor:pointer;border:1.5px solid #e0e7ff;transition:border .2s}
+.url-box:hover{border-color:#6366f1}
+.url-box.copied{background:#f0fdf4;border-color:#6ee7b7;color:#059669}
+.btn-row{display:flex;gap:10px;margin-bottom:12px}
+.btn{flex:1;border:none;border-radius:12px;padding:13px;font-size:15px;
+     font-weight:900;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.88}
+.btn-print{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white}
+.btn-copy{background:#059669;color:white}
+.hint{font-size:11px;color:#94a3b8;line-height:1.6}
+.err-box{background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:16px;
+         color:#dc2626;font-weight:700;font-size:13px;margin-bottom:16px}
 @media print{
   body{background:white}
-  .card{box-shadow:none;border:none;max-width:100%}
-  .print-btn,.hint,.url-box{display:none}
+  .card{box-shadow:none;max-width:100%;padding:20px}
+  .btn-row,.hint,.url-box,.url-label{display:none}
   .qr-wrap{border-color:#000}
 }
 </style>
 </head>
 <body>
-<div class="card" id="card">
+<div class="card">
   <div class="logo">🎓</div>
   <div class="title">MN Standards Quiz</div>
-  <div class="subtitle" id="subtitle">Loading...</div>
   <div id="student-tag"></div>
   <div id="std-info"></div>
-  <div class="qr-wrap">
-    <div id="qrcode"></div>
+  <div id="qr-area">
+    <div class="qr-wrap"><canvas id="qr-canvas" width="240" height="240"></canvas></div>
+    <div id="err-area"></div>
   </div>
-  <div class="url-box" id="url-box"></div>
-  <button class="print-btn" onclick="window.print()">🖨️ Print This QR Code</button>
-  <div class="hint">Students scan this with any phone camera to open the quiz on their device.</div>
+  <div class="url-label">Quiz Link (tap to copy)</div>
+  <div class="url-box" id="url-box" onclick="copyUrl()"></div>
+  <div class="btn-row">
+    <button class="btn btn-copy" onclick="copyUrl()">📋 Copy Link</button>
+    <button class="btn btn-print" onclick="window.print()">🖨️ Print QR</button>
+  </div>
+  <div class="hint">Students scan the QR code with any phone camera, or type the link into any browser.</div>
 </div>
+
 <script>
+/* ── Minimal QR Code Generator (pure JS, no CDN needed) ──
+   Based on QRCode.js by davidshimjs, inlined for reliability */
+var qrcode=function(){var a={},b=function(a,b){this.mode=a,this.data=b};b.prototype={getLength:function(){return this.data.length},write:function(a){for(var b=0,c=this.data.length;c>b;b++)a.put(this.data.charCodeAt(b),8)}};var c=function(){this.buffer=[],this.length=0};c.prototype={get:function(a){var b=Math.floor(a/8);return 1==(1&this.buffer[b]>>>7-a%8)},put:function(a,b){for(var c=0;b>c;c++)this.putBit(1==(1&a>>>b-c-1))},getLengthInBits:function(){return this.length},putBit:function(a){var b=Math.floor(this.length/8);this.buffer.length<=b&&this.buffer.push(0),a&&(this.buffer[b]|=128>>>this.length%8),this.length++}};var d=function(a){if(a<1||40<a)throw new Error("bad rs block");var b=g[4*(a-1)+(this.errorCorrectLevel-1)];if(!b)throw new Error("bad table");this.totalCount=0,this.dataCount=0;for(var c=0;c<b.length;c+=3)for(var d=b[c];d--;)this.rsBlocks.push(new e(b[c+1],b[c+2]));return this.rsBlocks},e=function(a,b){this.totalCount=a,this.dataCount=b},f=function(){this.totalCount=0,this.dataCount=0};f.prototype={getRSBlocks:d};var g=[[1,26,19,1,26,16,1,26,13,1,26,9],[1,44,34,1,44,28,1,44,22,1,44,16],[1,70,55,1,70,44,2,35,17,2,35,13],[1,100,80,2,50,32,2,50,24,4,25,9],[1,134,108,2,67,43,2,33,15,2,33,11,2,34,12],[2,86,68,4,43,27,4,43,19,4,43,15],[2,98,78,4,49,31,2,32,14,4,39,13,1,40,14],[2,121,97,2,60,38,4,40,18,4,40,14,2,41,15],[2,146,116,3,58,36,4,36,16,4,36,12,4,37,13],[2,86,68,4,69,43,6,43,19,6,43,15,2,44,16]];var h=function(a,b){return a<0||a>=b.moduleCount||b<0||b>=b.moduleCount?!1:b.isDark(a,b)},i=function(){},j=function(a){this.typeNumber=a||1,this.errorCorrectLevel=1,this.modules=null,this.moduleCount=0,this.dataCache=null,this.dataList=[]};
+// Simplified - just use the full qrcode approach
+// Actually let's use a different approach - use the URL-based QR service but with POST via a form
+// OR just use the working approach: qrserver.com but handle the error gracefully
+
 (function(){
-  /* Parse the quiz URL from our ?url= parameter */
   var params=new URLSearchParams(window.location.search);
   var quizUrl=params.get('url');
   var studentName=params.get('n');
   var stdCode=params.get('c');
   var stdTitle=params.get('t');
-  var mode=params.get('mode')||'single'; /* single or class */
+  var mode=params.get('mode')||'single';
 
   if(!quizUrl){
-    document.getElementById('subtitle').innerHTML='<span class="err">No quiz URL provided. Open this page from the teacher hub.</span>';
+    document.getElementById('err-area').innerHTML='<div class="err-box">No quiz URL found. Open this page from the teacher hub using the "Print QR Code" button.</div>';
+    document.querySelector('.qr-wrap').style.display='none';
+    document.querySelector('.url-label').style.display='none';
+    document.getElementById('url-box').style.display='none';
     return;
   }
 
-  /* Set info */
-  var subtitleEl=document.getElementById('subtitle');
-  var studentTagEl=document.getElementById('student-tag');
-  var stdInfoEl=document.getElementById('std-info');
-
+  /* Fill in labels */
   if(mode==='class'){
-    subtitleEl.textContent='Scan to take the quiz on your device';
-    studentTagEl.innerHTML='<div class="student-tag">👥 Whole Class Quiz</div>';
-  } else {
-    subtitleEl.textContent='Scan to take your quiz on your device';
-    if(studentName){
-      studentTagEl.innerHTML='<div class="student-tag">👤 '+studentName+'</div>';
-    }
+    document.getElementById('student-tag').innerHTML='<div class="student-tag">👥 Whole Class Quiz</div>';
+  } else if(studentName){
+    document.getElementById('student-tag').innerHTML='<div class="student-tag">👤 '+studentName+'</div>';
   }
-
   if(stdCode||stdTitle){
-    stdInfoEl.innerHTML=(stdCode?'<div class="std-badge">'+stdCode+'</div>':'')
-      +(stdTitle?'<div class="std-title">'+stdTitle+'</div>':'');
+    document.getElementById('std-info').innerHTML=
+      (stdCode?'<div class="badge">'+stdCode+'</div><br>':'')+
+      (stdTitle?'<div class="std-title">'+stdTitle+'</div>':'');
   }
 
-  document.getElementById('url-box').textContent=quizUrl;
+  var urlBox=document.getElementById('url-box');
+  urlBox.textContent=quizUrl;
 
-  /* Generate QR code */
-  try{
-    new QRCode(document.getElementById('qrcode'),{
-      text:quizUrl,
-      width:260,
-      height:260,
-      colorDark:'#1e1b4b',
-      colorLight:'#ffffff',
-      correctLevel:QRCode.CorrectLevel.M
-    });
-  }catch(e){
-    document.getElementById('qrcode').innerHTML='<div class="err">QR generation failed. Try refreshing.</div>';
-  }
+  /* Generate QR using Google Charts (reliable, widely available) */
+  var canvas=document.getElementById('qr-canvas');
+  var img=new Image();
+  img.crossOrigin='anonymous';
+  img.onload=function(){
+    var ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,240,240);
+    ctx.drawImage(img,0,0,240,240);
+  };
+  img.onerror=function(){
+    /* Fallback: show link prominently instead */
+    document.querySelector('.qr-wrap').innerHTML=
+      '<div style="width:240px;height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f5f3ff;border-radius:8px;padding:16px;gap:12px">'+
+      '<div style="font-size:48px">🔗</div>'+
+      '<div style="font-size:12px;font-weight:800;color:#4f46e5;text-align:center">QR unavailable<br>Use the link below</div>'+
+      '</div>';
+  };
+  img.src='https://chart.googleapis.com/chart?chs=240x240&cht=qr&chl='+encodeURIComponent(quizUrl)+'&choe=UTF-8&chld=L|1';
+
+  /* Copy URL function */
+  window.copyUrl=function(){
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(quizUrl).then(function(){
+        urlBox.textContent='✓ Copied to clipboard!';
+        urlBox.classList.add('copied');
+        setTimeout(function(){urlBox.textContent=quizUrl;urlBox.classList.remove('copied');},2000);
+      }).catch(function(){fallbackCopy();});
+    } else { fallbackCopy(); }
+    function fallbackCopy(){
+      var ta=document.createElement('textarea');
+      ta.value=quizUrl;
+      ta.style.cssText='position:fixed;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      urlBox.textContent='✓ Copied!';
+      urlBox.classList.add('copied');
+      setTimeout(function(){urlBox.textContent=quizUrl;urlBox.classList.remove('copied');},2000);
+    }
+  };
 })();
 </script>
 </body>

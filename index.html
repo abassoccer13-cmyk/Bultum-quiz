@@ -57,6 +57,15 @@ function makeCode(name,stdCode,pct){
   return btoa(unescape(encodeURIComponent(raw))).replace(/[^A-Z0-9]/gi,'').slice(0,16).toUpperCase();
 }
 
+function norm(q){
+  /* Normalize both full and compact question formats */
+  return {
+    question: q.question||q.q||"",
+    choices:  q.choices||q.ch||[],
+    correct:  q.correct!==undefined?q.correct:(q.a!==undefined?q.a:0),
+    explanation: q.explanation||q.e||""
+  };
+}
 function App(){
   var cfg=parseConfig();
   var isClass=cfg&&Array.isArray(cfg.students)&&cfg.students.length>0;
@@ -128,10 +137,10 @@ function App(){
   function pickAnswer(idx){
     if(answered||!questions[cur]) return;
     setSelected(idx);setAnswered(true);
-    var isOk=idx===questions[cur].correct;
+    var isOk=idx===norm(questions[cur]).correct;
     setCorrect(isOk);
     if(!isOk){setShake(true);setTimeout(function(){setShake(false);},500);}
-    var nr=results.concat([{q:questions[cur].question,sel:idx,correct:questions[cur].correct,ok:isOk}]);
+    var nr=results.concat([{q:norm(questions[cur]).question,sel:idx,correct:questions[cur].correct,ok:isOk}]);
     setResults(nr);
     if(cur+1>=questions.length){
       var sc=Math.round(100*nr.filter(function(r){return r.ok;}).length/nr.length);
@@ -221,7 +230,7 @@ function App(){
 
   /* QUIZ */
   if(screen==='quiz'&&questions.length){
-    var q=questions[cur];
+    var q=norm(questions[cur]);
     var prog=((cur+1)/questions.length)*100;
     return h('div',{style:CARD},
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
@@ -258,7 +267,7 @@ function App(){
       ),
       answered&&h('div',{className:'fadeup',style:{background:correct?'#f0fdf4':'#fef2f2',border:'2px solid '+(correct?'#6ee7b7':'#fca5a5'),borderRadius:11,padding:'13px 15px',marginBottom:14}},
         h('div',{style:{fontWeight:800,fontSize:15,color:correct?'#059669':'#dc2626',marginBottom:3}},correct?'🎉 Correct! Great job, '+name+'!':'😊 Not quite — here\'s the answer:'),
-        h('div',{style:{fontSize:12,color:'#374151',lineHeight:1.6}},q.explanation)
+        h('div',{style:{fontSize:12,color:'#374151',lineHeight:1.6}},q.explanation||('The correct answer was: '+q.choices[q.correct]))
       ),
       answered&&h('button',{className:'pop',onClick:next,style:{width:'100%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',color:'white',border:'none',borderRadius:13,padding:'14px',fontSize:16,fontWeight:900,cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 14px rgba(99,102,241,.45)'}},
         cur+1>=questions.length?'See My Results! 🏆':'Next Question →')
